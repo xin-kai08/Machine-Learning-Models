@@ -13,7 +13,7 @@ cell 2
 ![image](https://github.com/user-attachments/assets/bace888e-652d-4196-9439-0ddf0e67a061)
 
 cell 3
-![cell 2-1](https://github.com/user-attachments/assets/65652978-e3a2-4541-b076-d1b4c2f609cb)
+![image](https://github.com/user-attachments/assets/b2957308-67ce-4949-9112-904ccd431642)
 ![cell 2-2](https://github.com/user-attachments/assets/fe224e7f-355d-4869-bb8d-b19296746da8)
 
 cell 4
