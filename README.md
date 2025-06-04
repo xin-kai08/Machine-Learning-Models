@@ -5,6 +5,7 @@ cell 1
 ![cell 1](https://github.com/user-attachments/assets/c487977d-f91f-4499-9722-c6d3b5296047)
 
 cell 2
+
 定義快取函數(三維)
 ![image](https://github.com/user-attachments/assets/c64d8d8e-a7ba-45bd-9c73-ee18bfccc158)
 定義快取函數(二維)
@@ -16,11 +17,11 @@ cell 3
 ![image](https://github.com/user-attachments/assets/b2957308-67ce-4949-9112-904ccd431642)
 ![cell 2-2](https://github.com/user-attachments/assets/fe224e7f-355d-4869-bb8d-b19296746da8)
 
-cell 4
-![cell 3](https://github.com/user-attachments/assets/6e77b5af-d3a3-4d8d-944b-e8ddc50d4c46)
+cell 4 設定參數並執行
+![image](https://github.com/user-attachments/assets/7031215c-0e40-42ee-9606-670e37374942)
 
-cell 5
+cell 5 結果存回雲端硬碟
 ![cell 4](https://github.com/user-attachments/assets/5b2c0c75-2ef3-4174-844b-f9b485ba3b49)
 
 cell 6
-![cell 5](https://github.com/user-attachments/assets/f711327e-c5e7-453d-9095-6d5072e30acc)
+![image](https://github.com/user-attachments/assets/9a2d895f-9cb7-4381-8475-8541b4a3760f)
