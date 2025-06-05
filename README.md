@@ -24,4 +24,4 @@ cell 5 結果存回雲端硬碟
 ![cell 4](https://github.com/user-attachments/assets/5b2c0c75-2ef3-4174-844b-f9b485ba3b49)
 
 cell 6
-![image](https://github.com/user-attachments/assets/9a2d895f-9cb7-4381-8475-8541b4a3760f)
+![image](https://github.com/user-attachments/assets/b24bd835-fb85-4142-9eca-ecc456cebfa9)
