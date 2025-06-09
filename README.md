@@ -14,14 +14,8 @@ cell 2
 ![image](https://github.com/user-attachments/assets/bace888e-652d-4196-9439-0ddf0e67a061)
 
 cell 3
-![image](https://github.com/user-attachments/assets/b2957308-67ce-4949-9112-904ccd431642)
+![image](https://github.com/user-attachments/assets/b2bcac78-dd63-4d13-b9e5-4177ea0653b2)
 ![cell 2-2](https://github.com/user-attachments/assets/fe224e7f-355d-4869-bb8d-b19296746da8)
 
-cell 4 設定參數並執行
+cell 4 設定參數並執行 執行完自動將結果存回雲端
 ![image](https://github.com/user-attachments/assets/7031215c-0e40-42ee-9606-670e37374942)
-
-cell 5 結果存回雲端硬碟
-![cell 4](https://github.com/user-attachments/assets/5b2c0c75-2ef3-4174-844b-f9b485ba3b49)
-
-cell 6
-![image](https://github.com/user-attachments/assets/b24bd835-fb85-4142-9eca-ecc456cebfa9)
