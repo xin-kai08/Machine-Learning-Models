@@ -1,0 +1,4 @@
+0 normal
+1 transformer_rust
+2 wire_rust
+3 wire_peeling
