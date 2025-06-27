@@ -1,0 +1,6 @@
+0 normal
+1 wire_rust
+2 transformer_rust
+3 phone_overheating
+4 wire_peeling
+5 wire_bending
