@@ -54,20 +54,29 @@ inference_active = False    # 是否正在推論中
 @app.route("/get_result")
 def get_result():
     with result_lock:
-        if latest_result:
+        # Case 1: USB未連接
+        if not usb_connected and not inference_active:
             return jsonify({
-                "predicted": latest_result.get("predicted"),
-                "label": latest_result.get("label"),
-                "timestamp": latest_result.get("timestamp"),
-                "usb_connected": usb_connected,
-                "inference_active": inference_active
+                "predicted": -1,
+                "label": "USB未連接",
+                "timestamp": time.time(),
+                "sequence": [{"current": 0, "voltage": 0, "power": 0, "temp_C": 0}]
             })
+        # Case 2: USB 有接 & 最近功率為0 => 未充電
+        elif usb_connected and latest_power_zero:
+            return jsonify({
+                "predicted": -1,
+                "label": "未充電",
+                "timestamp": time.time(),
+                "sequence": [{"current": 0, "voltage": 0, "power": 0, "temp_C": 0}]
+            })
+        # Case 3: 有最新推論結果
         else:
             return jsonify({
-                "status": "no_data",
-                "message": "No result yet.",
-                "usb_connected": usb_connected,
-                "inference_active": inference_active
+                "predicted": latest_result.get("predicted", -1),
+                "label": latest_result.get("label", "未知"),
+                "timestamp": latest_result.get("timestamp", time.time()),
+                "sequence": latest_result.get("sequence", [])
             })
 
 # === 寫入結果到 CSV ===
@@ -97,6 +106,10 @@ def update_result(predicted, label, input_sequence, feature_names):
         latest_result["predicted"] = int(predicted)
         latest_result["label"] = label
         latest_result["timestamp"] = timestamp
+        latest_result["sequence"] = [
+            {name: float(val) for name, val in zip(feature_names, row)}
+            for row in input_sequence
+        ]
     write_to_csv(timestamp, predicted, label, input_sequence)
 
 # === 自動搜尋 USB 埠口 ===
@@ -111,7 +124,8 @@ def find_serial_port():
 
 # === 串口推論主循環 + 自動搜尋埠號 + 斷線安全重連 ===
 def serial_inference_loop():
-    global usb_connected, inference_active
+    global usb_connected, inference_active, latest_power_zero
+    latest_power_zero = False
     prev_predicted = 0
 
     POWER_THRESHOLD = 0.1  # 功率門檻
@@ -163,6 +177,7 @@ def serial_inference_loop():
 
                         if power > POWER_THRESHOLD:
                             inference_active = True  # 有功率，啟動推論
+                            latest_power_zero = False  # 有功率 => 重置
                             zero_count = 0
 
                             df = pd.DataFrame([input_data], columns=feature_names)
@@ -221,11 +236,14 @@ def serial_inference_loop():
 
                         else:
                             zero_count += 1
+                            latest_power_zero = True   # 有一次功率為0 => 標記 True
                             if DEBUG:
                                 print(f"功率為零次數: {zero_count}/{ZERO_COUNT_LIMIT}")
 
                             if zero_count >= ZERO_COUNT_LIMIT:
                                 inference_active = False  # Idle 狀態
+                                sequence_buffer.clear()
+                                raw_sequence_buffer.clear()
                                 if DEBUG:
                                     print("功率長時間為零，暫停推論（串口保持連線）")
                                 time.sleep(1)

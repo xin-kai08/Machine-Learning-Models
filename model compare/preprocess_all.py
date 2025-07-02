@@ -4,19 +4,17 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 # 設定你的資料夾路徑（請依實際修改）
-BASE_PATH = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4"
+BASE_PATH = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware"
 
 # 🔧 使用的欄位（可以刪掉其中一個）
-SELECTED_FEATURES = ["voltage", "current", "power", "temp_C"]
+SELECTED_FEATURES = ["current", "voltage",  "power", "temp_C"]
 
 # 各分類資料夾對應標籤
 LABEL_DIRS = {
     0: os.path.join(BASE_PATH, "normal"),
-    1: os.path.join(BASE_PATH, "abnormal", "transformer_rust"),
-    2: os.path.join(BASE_PATH, "abnormal", "wire_rust"),
-    3: os.path.join(BASE_PATH, "abnormal", "wire_peeling"),
-    4: os.path.join(BASE_PATH, "abnormal", "wire_bending"),
-    5: os.path.join(BASE_PATH, "abnormal", "phone_overheating"),
+    1: os.path.join(BASE_PATH, "abnormal", "wire_rust"),
+    2: os.path.join(BASE_PATH, "abnormal", "transformer_rust"),
+    3: os.path.join(BASE_PATH, "abnormal", "transformer_overheating"),
 }
 
 # ✅ 快取根目錄（你想要的輸出位置）
@@ -91,12 +89,8 @@ def generate_preprocessed_cache_2d(seq_lens, label_dirs,  cache_dir = CACHE_ROOT
                     num_chunks = len(data) // seq_len
                     chunks = [data[i * seq_len : (i + 1) * seq_len] for i in range(num_chunks)]
                     for chunk in chunks:
-                        features = []
-                        features.extend(np.mean(chunk, axis=0))
-                        features.extend(np.std(chunk, axis=0))
-                        features.extend(np.max(chunk, axis=0))
-                        features.extend(np.min(chunk, axis=0))
-                        all_features.append(features)
+                        flattened = chunk.flatten()  # 🌟 重點：直接攤平
+                        all_features.append(flattened)
                         all_labels.append(label)
 
         if not all_features:
@@ -110,11 +104,11 @@ def generate_preprocessed_cache_2d(seq_lens, label_dirs,  cache_dir = CACHE_ROOT
 
         np.save(cache_X, X_scaled)
         np.save(cache_y, y)
-        print(f"✅ 完成 2D 快取：seq_len={seq_len}（共 {len(X_scaled)} 筆）")
+        print(f"✅ 完成 2D 快取：seq_len={seq_len}（共 {len(X_scaled)} 筆，shape: {X_scaled.shape}）")
 
 # 主執行邏輯
 if __name__ == "__main__":
-    seq_lens = [4, 8, 10, 20, 30, 40]
+    seq_lens = [10, 20, 30, 40]
 
     print("🔁 開始建立 3D 快取")
     generate_preprocessed_cache_3d(seq_lens, LABEL_DIRS)

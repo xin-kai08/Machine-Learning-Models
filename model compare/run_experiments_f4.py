@@ -55,7 +55,7 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                            RESULT_DIR,
                            num_epochs=100, k_folds=5, num_classes=4):
 
-    PREPROCESSED_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\preprocessed"
+    PREPROCESSED_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware\preprocessed"
 
     SUB_DIRS = [
         "accuracy_curves", "loss_curves", "f1_score_curves",
@@ -253,6 +253,7 @@ class MLPClassifier(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, num_classes)
         )
+
     def forward(self, x):
         return self.model(x)
 
@@ -319,57 +320,72 @@ class TimesNetClassifier(nn.Module):
         return self.fc(x)
 
 # === model_args 範例 ===
-lstm_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 1, 'num_classes': 6}
-gru_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 1, 'num_classes': 6}
-cnn_args = {'input_dim': 4, 'num_classes': 6}
-timesnet_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 2, 'num_classes': 6}
+lstm_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 1, 'num_classes': 4}
+gru_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 1, 'num_classes': 4}
+cnn_args = {'input_dim': 4, 'num_classes': 4}
+timesnet_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 2, 'num_classes': 4}
 
 # === 主程式呼叫範例 ===
 if __name__ == "__main__":
     # 訓練參數設定
-    batch_sizes = [4, 8, 16, 32]
-    learning_rates = [1e-2, 1e-3, 1e-4]
-    seq_lens = [4, 8, 10, 20, 30, 40]
+    batch_sizes = [8, 16, 32]
+    learning_rates = [1e-1, 1e-2, 1e-3, 1e-4]
+    seq_lens = [10, 20, 30, 40]
     num_epochs = 100
 
     # === LSTM ===
-    train_and_search_model(LSTMClassifier, lstm_args,
-                           ChargeSequenceDataset3D,
-                           "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
-                           batch_sizes, learning_rates, seq_lens,
-                           RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\feature dim_4\LSTM",
-                           num_epochs=num_epochs)
+    # train_and_search_model(LSTMClassifier, lstm_args,
+    #                        ChargeSequenceDataset3D,
+    #                        "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
+    #                        batch_sizes, learning_rates, seq_lens,
+    #                        RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\LSTM",
+    #                        num_epochs=num_epochs)
 
     # === MLP ===
+    BASE_RESULT_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\MLP"
+
     for seq_len in seq_lens:
-        mlp_args = {'input_dim': seq_len * 4, 'hidden_dim': 128, 'num_classes': 6}
-        train_and_search_model(MLPClassifier, mlp_args,
-                            ChargeSequenceDataset2D,
-                            "X_seq{seq_len}_2d.npy", "y_seq{seq_len}_2d.npy",
-                            batch_sizes, learning_rates, [seq_len],
-                            RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\feature dim_4\MLP",
-                            num_epochs=num_epochs)
+        mlp_args = {
+            'input_dim': seq_len * 4,
+            'hidden_dim': 128,
+            'num_classes': 4
+        }
+
+        result_dir = os.path.join(BASE_RESULT_DIR, f"seq_{seq_len}")
+
+        train_and_search_model(
+            MLPClassifier,
+            mlp_args,
+            ChargeSequenceDataset2D,
+            "X_seq{seq_len}_2d.npy",
+            "y_seq{seq_len}_2d.npy",
+            batch_sizes,
+            learning_rates,
+            [seq_len],  # 這邊固定 [seq_len] 就不會多餘
+            RESULT_DIR=result_dir,
+            num_epochs=num_epochs
+        )
 
     # === GRU ===
-    train_and_search_model(GRUClassifier, gru_args,
-                           ChargeSequenceDataset3D,
-                           "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
-                           batch_sizes, learning_rates, seq_lens,
-                           RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\feature dim_4\GRU",
-                           num_epochs=num_epochs)
+    # train_and_search_model(GRUClassifier, gru_args,
+    #                        ChargeSequenceDataset3D,
+    #                        "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
+    #                        batch_sizes, learning_rates, seq_lens,
+    #                        RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\GRU",
+    #                        num_epochs=num_epochs)
 
     # === CNN1D ===
-    train_and_search_model(CNN1DClassifier, cnn_args,
-                           ChargeSequenceDataset3D,
-                           "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
-                           batch_sizes, learning_rates, seq_lens,
-                           RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\feature dim_4\CNN",
-                           num_epochs=num_epochs)
+    # train_and_search_model(CNN1DClassifier, cnn_args,
+    #                        ChargeSequenceDataset3D,
+    #                        "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
+    #                        batch_sizes, learning_rates, seq_lens,
+    #                        RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\CNN",
+    #                        num_epochs=num_epochs)
 
     # === TimesNet ===
-    train_and_search_model(TimesNetClassifier, timesnet_args,
-                           ChargeSequenceDataset3D,
-                           "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
-                           batch_sizes, learning_rates, seq_lens,
-                           RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\feature dim_4\TimesNet",
-                           num_epochs=num_epochs)
+    # train_and_search_model(TimesNetClassifier, timesnet_args,
+    #                        ChargeSequenceDataset3D,
+    #                        "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
+    #                        batch_sizes, learning_rates, seq_lens,
+    #                        RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\TimesNet",
+    #                        num_epochs=num_epochs)
