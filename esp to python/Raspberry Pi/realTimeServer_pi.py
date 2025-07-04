@@ -127,7 +127,6 @@ def serial_inference_loop():
     global usb_connected, inference_active, latest_power_zero
     latest_power_zero = False
     prev_predicted = 0
-
     POWER_THRESHOLD = 0.1  # 功率門檻
     ZERO_COUNT_LIMIT = 30  # 累積多少次為 0 才 idle
     zero_count = 0
@@ -235,21 +234,29 @@ def serial_inference_loop():
                                 raw_sequence_buffer.clear()
 
                         else:
-                            zero_count += 1
-                            latest_power_zero = True   # 有一次功率為0 => 標記 True
-                            if DEBUG:
-                                print(f"功率為零次數: {zero_count}/{ZERO_COUNT_LIMIT}")
-
-                            if zero_count >= ZERO_COUNT_LIMIT:
-                                inference_active = False  # Idle 狀態
-                                sequence_buffer.clear()
-                                raw_sequence_buffer.clear()
+                            if not inference_active:
+                                # 已經是 idle 狀態，就不再累積
+                                zero_count = ZERO_COUNT_LIMIT
                                 if DEBUG:
-                                    print("功率長時間為零，暫停推論（串口保持連線）")
-                                time.sleep(1)
-                                continue
+                                    print("功率為零，暫停推論")
+                            else:
+                                zero_count += 1
+                                latest_power_zero = True
+                                if DEBUG:
+                                    print(f"功率為零次數: {zero_count}/{ZERO_COUNT_LIMIT}")
 
-                        time.sleep(0.1)
+                                if zero_count >= ZERO_COUNT_LIMIT:
+                                    inference_active = False  # Idle 狀態
+                                    zero_count = ZERO_COUNT_LIMIT  # 固定值，不再累積
+                                    sequence_buffer.clear()
+                                    raw_sequence_buffer.clear()
+                                    if DEBUG:
+                                        print("功率長時間為零，暫停推論（串口保持連線）")
+                                    time.sleep(1)
+                                    continue
+
+
+                        time.sleep(0.5)
 
                     except serial.SerialException:
                         if ser:
