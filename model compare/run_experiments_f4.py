@@ -1,25 +1,3 @@
-"""
-🚀 通用版 run_experiments.py 範例 🚀
-
-✅ 支援模型：
-    - LSTM
-    - MLP
-    - GRU
-    - CNN1D
-    - TimesNet
-
-✅ 支援資料格式：
-    - ChargeSequenceDataset3D → X_seq{seq_len}_3d.npy
-    - ChargeSequenceDataset2D → X_seq{seq_len}_2d.npy
-
-✅ 通用版 `train_and_search_model` 已整合：
-    - log / tqdm / plot / confusion matrix / CSV → 一致風格
-    - 一鍵跑 sweep → 可比較不同模型結果
-    - 未來擴充新模型只需加 model_class + model_args 即可
-
-✨ 專題 pipeline 高一致性版本 ✨
-"""
-
 import os
 import numpy as np
 import pandas as pd
@@ -53,9 +31,8 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                            X_filename, y_filename,
                            batch_sizes, learning_rates, seq_lens,
                            RESULT_DIR,
-                           num_epochs=100, k_folds=5, num_classes=4):
-
-    PREPROCESSED_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware\preprocessed"
+                           num_epochs=100, k_folds=5, num_classes=4,
+                           base_preprocessed_dir=None):
 
     SUB_DIRS = [
         "accuracy_curves", "loss_curves", "f1_score_curves",
@@ -75,13 +52,9 @@ def train_and_search_model(model_class, model_args, DatasetClass,
         for lr in learning_rates:
             for seq_len in seq_lens:
                 print(f"\n🧪 BS={bs} | LR={lr} | SEQ={seq_len}")
+                
+                PREPROCESSED_DIR = base_preprocessed_dir
 
-                x_path = os.path.join(PREPROCESSED_DIR, X_filename.format(seq_len=seq_len))
-                y_path = os.path.join(PREPROCESSED_DIR, y_filename.format(seq_len=seq_len))
-                X = np.load(x_path)
-                y = np.load(y_path)
-
-                skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
                 acc_curves, loss_curves, f1_curves = [], [], []
                 acc_train_curves, loss_train_curves = [], []
                 all_y_true, all_y_pred = [], []
@@ -91,9 +64,15 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                 log_path = os.path.join(RESULT_DIR, "logs", f"bs{bs}_lr{lr}_seq{seq_len}.txt")
                 with open(log_path, "w") as log_file:
 
-                    for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
-                        X_train, X_val = X[train_idx], X[val_idx]
-                        y_train, y_val = y[train_idx], y[val_idx]
+                    for fold_idx in range(1, k_folds+1):
+                        X_train = np.load(os.path.join(
+                            PREPROCESSED_DIR, f"X_train_fold{fold_idx}_seq{seq_len}_3d.npy"))
+                        y_train = np.load(os.path.join(
+                            PREPROCESSED_DIR, f"y_train_fold{fold_idx}_seq{seq_len}_3d.npy"))
+                        X_val = np.load(os.path.join(
+                            PREPROCESSED_DIR, f"X_val_fold{fold_idx}_seq{seq_len}_3d.npy"))
+                        y_val = np.load(os.path.join(
+                            PREPROCESSED_DIR, f"y_val_fold{fold_idx}_seq{seq_len}_3d.npy"))
 
                         train_loader = DataLoader(DatasetClass(X_train, y_train), batch_size=bs, shuffle=True)
                         val_loader = DataLoader(DatasetClass(X_val, y_val), batch_size=bs)
@@ -151,8 +130,8 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                             f1_list.append(f1)
 
                             if (epoch + 1) % 10 == 0:
-                                print(f"    [Fold {fold+1}] Epoch {epoch+1}/{num_epochs} | Acc: {acc:.4f} | Loss: {avg_loss:.4f}")
-                                log_file.write(f"[Fold {fold+1}] Epoch {epoch+1}/{num_epochs} | Acc: {acc:.4f} | Loss: {avg_loss:.4f}\n")
+                                print(f"    [Fold {fold_idx}] Epoch {epoch+1}/{num_epochs} | Acc: {acc:.4f} | Loss: {avg_loss:.4f}")
+                                log_file.write(f"[Fold {fold_idx}] Epoch {epoch+1}/{num_epochs} | Acc: {acc:.4f} | Loss: {avg_loss:.4f}\n")
 
                         acc_curves.append(acc_list)
                         loss_curves.append(loss_list)
@@ -162,54 +141,54 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                         all_y_true.extend(y_true_epoch)
                         all_y_pred.extend(y_pred_epoch)
 
-                    t1 = time.time()
+                t1 = time.time()
 
-                    def plot_metric_per_fold(fold_lists, metric_name, folder):
-                        plt.figure(figsize=(10, 6))
-                        for fold_idx, fold_metric in enumerate(fold_lists):
-                            plt.plot(range(1, num_epochs + 1), fold_metric, label=f"Fold {fold_idx + 1}")
-                        plt.title(f"Combined {metric_name.capitalize()} (BS={bs}, LR={lr}, SEQ={seq_len})")
-                        plt.xlabel("Epoch")
-                        plt.ylabel(metric_name.capitalize())
-                        if metric_name != 'loss':
-                            plt.ylim(0, 1.0)
-                        plt.grid(True)
-                        plt.legend()
-                        path = os.path.join(RESULT_DIR, folder, f"bs{bs}_lr{lr}_seq{seq_len}_combined_{metric_name}.png")
-                        plt.savefig(path, bbox_inches='tight')
-                        plt.close()
-
-                    plot_metric_per_fold(acc_curves, "accuracy", "accuracy_curves")
-                    plot_metric_per_fold(loss_curves, "loss", "loss_curves")
-                    plot_metric_per_fold(f1_curves, "f1_score", "f1_score_curves")
-                    plot_metric_per_fold(acc_train_curves, "accuracy", "train_accuracy")
-                    plot_metric_per_fold(loss_train_curves, "loss", "train_loss")
-
-                    cm = confusion_matrix(all_y_true, all_y_pred)
-                    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=np.unique(y))
-                    disp.plot(cmap='Blues', values_format='d')
-                    plt.title(f"Confusion Matrix\nBS={bs} LR={lr} SEQ={seq_len}")
-                    plt.savefig(os.path.join(RESULT_DIR, "confusion_matrices", f"bs{bs}_lr{lr}_seq{seq_len}.png"), bbox_inches='tight')
+                # === 曲線繪製 ===
+                def plot_metric_per_fold(fold_lists, metric_name, folder):
+                    plt.figure(figsize=(10, 6))
+                    for fold_idx, fold_metric in enumerate(fold_lists):
+                        plt.plot(range(1, num_epochs + 1), fold_metric, label=f"Fold {fold_idx + 1}")
+                    plt.title(f"Combined {metric_name.capitalize()} (BS={bs}, LR={lr}, SEQ={seq_len})")
+                    plt.xlabel("Epoch")
+                    plt.ylabel(metric_name.capitalize())
+                    if metric_name != 'loss':
+                        plt.ylim(0, 1.0)
+                    plt.grid(True)
+                    plt.legend()
+                    path = os.path.join(RESULT_DIR, folder, f"bs{bs}_lr{lr}_seq{seq_len}_combined_{metric_name}.png")
+                    plt.savefig(path, bbox_inches='tight')
                     plt.close()
 
-                    final_result = {
-                        'batch_size': bs, 'learning_rate': lr, 'seq_len': seq_len,
-                        'final_acc': acc_list[-1], 'final_loss': loss_list[-1],
-                        'precision': precision_score(all_y_true, all_y_pred, average='macro', zero_division=0),
-                        'recall': recall_score(all_y_true, all_y_pred, average='macro', zero_division=0),
-                        'f1_score': f1_score(all_y_true, all_y_pred, average='macro', zero_division=0),
-                        'training_time_s': round(t1 - t0, 2)
-                    }
-                    if final_result['final_acc'] >= 1.0:
-                        print(f"⚠️ 準確率為 1.0 的結果已跳過：BS={bs} LR={lr} SEQ={seq_len}")
-                        continue
-                    results.append(final_result)
+                plot_metric_per_fold(acc_curves, "accuracy", "accuracy_curves")
+                plot_metric_per_fold(loss_curves, "loss", "loss_curves")
+                plot_metric_per_fold(f1_curves, "f1_score", "f1_score_curves")
+                plot_metric_per_fold(acc_train_curves, "accuracy", "train_accuracy")
+                plot_metric_per_fold(loss_train_curves, "loss", "train_loss")
 
-                    print(f"\n📊 統計結果 (BS={bs}, LR={lr}, SEQ={seq_len}):")
-                    print(f"  🔹 Final Accuracy : {final_result['final_acc']:.4f}")
-                    print(f"  🔹 F1-score       : {final_result['f1_score']:.4f}")
-                    print(f"  ⏱️  Training Time  : {final_result['training_time_s']} 秒")
+                cm = confusion_matrix(all_y_true, all_y_pred)
+                disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=np.unique(all_y_true))
+                disp.plot(cmap='Blues', values_format='d')
+                plt.title(f"Confusion Matrix\nBS={bs} LR={lr} SEQ={seq_len}")
+                plt.savefig(os.path.join(RESULT_DIR, "confusion_matrices", f"bs{bs}_lr{lr}_seq{seq_len}.png"), bbox_inches='tight')
+                plt.close()
 
+                final_result = {
+                    'batch_size': bs, 'learning_rate': lr, 'seq_len': seq_len,
+                    'final_acc': acc_list[-1], 'final_loss': loss_list[-1],
+                    'precision': precision_score(all_y_true, all_y_pred, average='macro', zero_division=0),
+                    'recall': recall_score(all_y_true, all_y_pred, average='macro', zero_division=0),
+                    'f1_score': f1_score(all_y_true, all_y_pred, average='macro', zero_division=0),
+                    'training_time_s': round(t1 - t0, 2)
+                }
+                results.append(final_result)
+
+                print(f"\n📊 統計結果 (BS={bs}, LR={lr}, SEQ={seq_len}):")
+                print(f"  🔹 Final Accuracy : {final_result['final_acc']:.4f}")
+                print(f"  🔹 F1-score       : {final_result['f1_score']:.4f}")
+                print(f"  ⏱️  Training Time  : {final_result['training_time_s']} 秒")
+
+                log_path = os.path.join(RESULT_DIR, "logs", f"bs{bs}_lr{lr}_seq{seq_len}.txt")
+                with open(log_path, "a") as log_file:
                     log_file.write(f"\nFinal Result:\n")
                     log_file.write(f"  Final Accuracy: {final_result['final_acc']:.4f}\n")
                     log_file.write(f"  F1-score      : {final_result['f1_score']:.4f}\n")
@@ -235,13 +214,16 @@ def train_and_search_model(model_class, model_args, DatasetClass,
 
 # === LSTMClassifier ===
 class LSTMClassifier(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_layers, num_classes):
+    def __init__(self, input_dim, hidden_dim, num_layers, num_classes, dropout_rate=0.0):
         super().__init__()
         self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
+        self.dropout = nn.Dropout(dropout_rate) if dropout_rate > 0 else nn.Identity()
         self.fc = nn.Linear(hidden_dim, num_classes)
+
     def forward(self, x):
         out, _ = self.lstm(x)
         out = out[:, -1, :]
+        out = self.dropout(out)
         return self.fc(out)
 
 # === MLPClassifier ===
@@ -319,73 +301,79 @@ class TimesNetClassifier(nn.Module):
         x = self.pool(x).squeeze(-1)  # (B, F)
         return self.fc(x)
 
+class TransformerClassifier(nn.Module):
+    def __init__(self, input_dim, num_heads, num_layers, hidden_dim, num_classes):
+        super().__init__()
+        encoder_layer = nn.TransformerEncoderLayer(d_model=input_dim, nhead=num_heads, dim_feedforward=hidden_dim, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.fc = nn.Linear(input_dim, num_classes)
+
+    def forward(self, x):
+        x = self.transformer_encoder(x)
+        x = x.mean(dim=1)  # or take x[:,0,:] if you add CLS token
+        return self.fc(x)
+
 # === model_args 範例 ===
 lstm_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 1, 'num_classes': 4}
 gru_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 1, 'num_classes': 4}
 cnn_args = {'input_dim': 4, 'num_classes': 4}
 timesnet_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 2, 'num_classes': 4}
+transformer_args = {'input_dim': 4, 'num_heads': 2, 'num_layers': 2, 'hidden_dim': 64, 'num_classes': 4}
 
 # === 主程式呼叫範例 ===
 if __name__ == "__main__":
-    # 訓練參數設定
     batch_sizes = [8, 16, 32]
     learning_rates = [1e-1, 1e-2, 1e-3, 1e-4]
     seq_lens = [10, 20, 30, 40]
     num_epochs = 100
+    strides = [1]
+    feature_dim = 4
+    
+    model_configs = [
+        ("LSTM", LSTMClassifier, lstm_args, ChargeSequenceDataset3D, "3d"),
+        ("GRU", GRUClassifier, gru_args, ChargeSequenceDataset3D, "3d"),
+        ("CNN", CNN1DClassifier, cnn_args, ChargeSequenceDataset3D, "3d"),
+        ("TimesNet", TimesNetClassifier, timesnet_args, ChargeSequenceDataset3D, "3d"),
+        ("Transformer", TransformerClassifier, transformer_args, ChargeSequenceDataset3D, "3d"),
+    ]
 
-    # === LSTM ===
-    # train_and_search_model(LSTMClassifier, lstm_args,
-    #                        ChargeSequenceDataset3D,
-    #                        "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
-    #                        batch_sizes, learning_rates, seq_lens,
-    #                        RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\LSTM",
-    #                        num_epochs=num_epochs)
+    base_data_path = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware\preprocessed_kfold"
+    base_result_path = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\model"
 
-    # === MLP ===
-    BASE_RESULT_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\MLP"
+    for stride in strides:
+        pre_dir = os.path.join(base_data_path, f"stride_{stride}")
+        
+        for model_name, model_cls, model_args, dataset_cls, suffix in model_configs:
+            for bs in batch_sizes:
+                for lr in learning_rates:
+                    for seq_len in seq_lens:
+                        result_dir = os.path.join(
+                            base_result_path, model_name, f"stride_{stride}", f"bs{bs}_lr{lr}_seq{seq_len}"
+                        )
+                        
+                        if model_name == "MLP":
+                            mlp_args = {
+                                'input_dim': seq_len * feature_dim,
+                                'hidden_dim': 128,
+                                'num_classes': 4
+                            }
+                            model_cls = MLPClassifier
+                            dataset_cls = ChargeSequenceDataset2D
+                            suffix = "2d"
+                            args = mlp_args
+                        else:
+                            args = model_args
 
-    for seq_len in seq_lens:
-        mlp_args = {
-            'input_dim': seq_len * 4,
-            'hidden_dim': 128,
-            'num_classes': 4
-        }
-
-        result_dir = os.path.join(BASE_RESULT_DIR, f"seq_{seq_len}")
-
-        train_and_search_model(
-            MLPClassifier,
-            mlp_args,
-            ChargeSequenceDataset2D,
-            "X_seq{seq_len}_2d.npy",
-            "y_seq{seq_len}_2d.npy",
-            batch_sizes,
-            learning_rates,
-            [seq_len],  # 這邊固定 [seq_len] 就不會多餘
-            RESULT_DIR=result_dir,
-            num_epochs=num_epochs
-        )
-
-    # === GRU ===
-    # train_and_search_model(GRUClassifier, gru_args,
-    #                        ChargeSequenceDataset3D,
-    #                        "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
-    #                        batch_sizes, learning_rates, seq_lens,
-    #                        RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\GRU",
-    #                        num_epochs=num_epochs)
-
-    # === CNN1D ===
-    # train_and_search_model(CNN1DClassifier, cnn_args,
-    #                        ChargeSequenceDataset3D,
-    #                        "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
-    #                        batch_sizes, learning_rates, seq_lens,
-    #                        RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\CNN",
-    #                        num_epochs=num_epochs)
-
-    # === TimesNet ===
-    # train_and_search_model(TimesNetClassifier, timesnet_args,
-    #                        ChargeSequenceDataset3D,
-    #                        "X_seq{seq_len}_3d.npy", "y_seq{seq_len}_3d.npy",
-    #                        batch_sizes, learning_rates, seq_lens,
-    #                        RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\TimesNet",
-    #                        num_epochs=num_epochs)
+                        train_and_search_model(
+                            model_cls,
+                            args,
+                            dataset_cls,
+                            f"X_seq{{seq_len}}_{suffix}.npy",
+                            f"y_seq{{seq_len}}_{suffix}.npy",
+                            [bs],
+                            [lr],
+                            [seq_len],
+                            RESULT_DIR=result_dir,
+                            num_epochs=num_epochs,
+                            base_preprocessed_dir=pre_dir
+                        )
