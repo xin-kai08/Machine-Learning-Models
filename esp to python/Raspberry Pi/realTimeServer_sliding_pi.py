@@ -17,9 +17,10 @@ DEBUG = os.environ.get("DEBUG", "False") == "True"
 
 # === 參數設定 ===
 BAUD_RATE = 9600
-MAX_SEQ_LEN = 10  # 序列長度
+MAX_SEQ_LEN = 15  # 序列長度
 INPUT_DIM = 4
-TEMP_THRESHOLD = 40
+STRIDE = 5
+TEMP_THRESHOLD = 35
 RESULTS_PATH = "/home/pi/machine_learning/results.csv"
 
 LABEL_NAMES = {
@@ -31,7 +32,7 @@ LABEL_NAMES = {
 feature_names = ["current", "voltage", "power", "temp_C"]
 
 # === 載入模型與 Scaler ===
-model = torch.jit.load("0626_fold_5_model_scripted.pt")
+model = torch.jit.load("20250819_fold_4_model_scripted.pt")
 model.eval()
 if DEBUG:
     print("Model loaded.")
@@ -57,7 +58,7 @@ def get_result():
         # Case 1: USB未連接
         if not usb_connected and not inference_active:
             return jsonify({
-                "predicted": -1,
+                "predicted": 0,
                 "label": "USB未連接",
                 "timestamp": time.time(),
                 "sequence": [{"current": 0, "voltage": 0, "power": 0, "temp_C": 0}]
@@ -65,7 +66,7 @@ def get_result():
         # Case 2: USB 有接 & 最近功率為0 => 未充電
         elif usb_connected and latest_power_zero:
             return jsonify({
-                "predicted": -1,
+                "predicted": 0,
                 "label": "未充電",
                 "timestamp": time.time(),
                 "sequence": [{"current": 0, "voltage": 0, "power": 0, "temp_C": 0}]
@@ -73,7 +74,7 @@ def get_result():
         # Case 3: 有最新推論結果
         else:
             return jsonify({
-                "predicted": latest_result.get("predicted", -1),
+                "predicted": latest_result.get("predicted", 0),
                 "label": latest_result.get("label", "未知"),
                 "timestamp": latest_result.get("timestamp", time.time()),
                 "sequence": latest_result.get("sequence", [])
@@ -146,6 +147,11 @@ def serial_inference_loop():
             try:
                 ser = serial.Serial(port, BAUD_RATE)
                 usb_connected = True
+                # === 插拔後冷啟動緩衝 ===
+                time.sleep(1)
+                if DEBUG:
+                    print("Serial connected, stabilizing for 0.5 sec...")
+                    
                 if DEBUG:
                     print(f"Serial connected: {port} @ {BAUD_RATE}")
                 log_device_event("USB_CONNECTED")
@@ -190,8 +196,8 @@ def serial_inference_loop():
                             if DEBUG:
                                 print(f"Data received {len(sequence_buffer)}: {input_data}")
 
-                            if len(sequence_buffer) == MAX_SEQ_LEN:
-                                input_tensor = torch.tensor([np.array(sequence_buffer)], dtype=torch.float32)
+                            if len(sequence_buffer) >= MAX_SEQ_LEN:
+                                input_tensor = torch.tensor([np.array(sequence_buffer[-MAX_SEQ_LEN:])], dtype=torch.float32)
                                 with torch.no_grad():
                                     output = model(input_tensor)
                                     predicted = torch.argmax(output, dim=1).item()
@@ -230,10 +236,16 @@ def serial_inference_loop():
                                     if DEBUG:
                                         print("Result updated and saved")
 
-                                sequence_buffer.clear()
-                                raw_sequence_buffer.clear()
+                                sequence_buffer = sequence_buffer[STRIDE:]
+                                raw_sequence_buffer = raw_sequence_buffer[STRIDE:]
 
                         else:
+                            # 功率只要是 0，序列立刻清空
+                            sequence_buffer.clear()
+                            raw_sequence_buffer.clear()
+
+                            latest_power_zero = True
+                            
                             if not inference_active:
                                 # 已經是 idle 狀態，就不再累積
                                 zero_count = ZERO_COUNT_LIMIT
