@@ -46,7 +46,7 @@ model.eval()
 if DEBUG:
     print("Model loaded.")
 
-scaler = joblib.load("20250626_scaler_fold5.pkl")
+scaler = joblib.load("20250626_scaler_fold_5.pkl")
 if DEBUG:
     print("Scaler loaded.")
 

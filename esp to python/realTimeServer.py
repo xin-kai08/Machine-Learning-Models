@@ -26,12 +26,12 @@ TEMP_THRESHOLD = 40
 model = LSTMClassifier(INPUT_DIM, HIDDEN_DIM, NUM_LAYERS, NUM_CLASSES)
 model.load_state_dict(
     torch.load(
-        r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\esp to python\0626_fold_5_model.pth",
+        r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\esp to python\20250626_fold_5_model.pth",
         map_location=torch.device("cpu"),
     )
 )
 model.eval()
-scaler = joblib.load("0626_scaler_fold5.pkl")
+scaler = joblib.load("20250626_scaler_fold_5.pkl")
 
 LABEL_NAMES = {
     0: "正常",
@@ -101,8 +101,15 @@ def serial_inference_loop():
             sequence_buffer.append(input_scaled)
             raw_sequence_buffer.append(input_data)
 
-            print(f"📥 收到第 {len(sequence_buffer)} 筆: {input_data}")
+            # 印出最新一筆
+            print(f"📥 收到新一筆數據: {input_data}")
 
+            # 滑動視窗：如果超過視窗長度，移除最舊
+            if len(sequence_buffer) > MAX_SEQ_LEN:
+                sequence_buffer.pop(0)
+                raw_sequence_buffer.pop(0)
+
+            # 視窗滿了就預測
             if len(sequence_buffer) == MAX_SEQ_LEN:
                 input_tensor = torch.tensor([sequence_buffer], dtype=torch.float32)
                 with torch.no_grad():
@@ -110,7 +117,7 @@ def serial_inference_loop():
                     predicted = torch.argmax(output, dim=1).item()
                     label = LABEL_NAMES.get(predicted, f"未知類別 {predicted}")
 
-                    # === 雙向溫度後處理 ===
+                    # === 溫度後處理 ===
                     try:
                         temp_idx = feature_names.index("temp_C")
                         last_temp = raw_sequence_buffer[-1][temp_idx]
@@ -135,7 +142,7 @@ def serial_inference_loop():
                     else:
                         print("✅ 正常狀態")
 
-                    # === 跳窗邏輯（僅新異常）
+                    # === 跳窗邏輯（如果要保留）
                     if predicted != 0 and predicted != prev_predicted:
                         pause_reading = True
                         ser.close()
@@ -159,10 +166,6 @@ def serial_inference_loop():
                     prev_predicted = 0 if predicted == 0 else predicted
 
                     update_result(predicted, label, result_sequence, scaler_cols)
-
-                sequence_buffer.clear()
-                raw_sequence_buffer.clear()
-
             time.sleep(0.1)
 
         except KeyboardInterrupt:

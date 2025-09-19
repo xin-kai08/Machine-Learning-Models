@@ -1,0 +1,2 @@
+experiment_id,batch_size,learning_rate,max_seq_len,pre_train_loss,pre_train_acc,post_train_loss,post_train_acc,precision,recall,f1_score
+bs_16_lr_0.01_seq_15_stride_5,16,0.01,15,1.3700912952423097,0.2253713383907523,0.10986584722995758,0.9504023329837226,0.9512240429131218,0.9488325811496543,0.9490259858756284

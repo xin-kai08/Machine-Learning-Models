@@ -42,12 +42,12 @@ MQTT_USERNAME="NUTNee"
 MQTT_PASSWORD="NUTNee1234"
 
 # === 載入模型與 Scaler ===
-model = torch.jit.load("20250819_fold_4_model_scripted.pt")
+model = torch.jit.load("20250819_fold_1_model_scripted.pt")
 model.eval()
 if DEBUG:
     print("Model loaded.")
 
-scaler = joblib.load("0626_scaler_fold5.pkl")
+scaler = joblib.load("20250626_scaler_fold_5.pkl")
 if DEBUG:
     print("Scaler loaded.")
 
