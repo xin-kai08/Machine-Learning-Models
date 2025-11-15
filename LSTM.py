@@ -16,7 +16,7 @@ import time
 
 # 資料集根目錄
 BASE_PATH = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware"
-RESULT_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result"
+RESULT_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\pytorch\20250819"
 
 # 各分類資料夾設定
 LABEL_DIRS = {
@@ -27,12 +27,12 @@ LABEL_DIRS = {
 }
 
 # 設定參數
-MAX_SEQ_LEN = 10
-STRIDE = 1  # 每次滑動幾步
+MAX_SEQ_LEN = 15
+STRIDE = 5  # 每次滑動幾步
 
 INPUT_DIM = 4
 HIDDEN_DIM = 16
-NUM_LAYERS = 4
+NUM_LAYERS = 1
 NUM_CLASSES = len(LABEL_DIRS)
 NUM_EPOCHS = 100
 
@@ -57,7 +57,7 @@ def process_file(file_path, label, sequences, labels, max_seq_len=MAX_SEQ_LEN):
     power = df['power'].values
     temp_C = df['temp_C'].values
 
-    sequence = np.column_stack((current, voltage, temp_C, power))  # shape: (N, 4)
+    sequence = np.column_stack((current, voltage, power, temp_C))  # shape: (N, 4)
     seq_len = sequence.shape[0]
     for start in range(0, seq_len - max_seq_len + 1, STRIDE):
         end = start + max_seq_len
@@ -111,7 +111,7 @@ class ChargingDataset(Dataset):
 
 # === LSTM 模型定義 ===
 class LSTMClassifier(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_layers, num_classes=NUM_CLASSES, dropout_rate=0.3):
+    def __init__(self, input_dim, hidden_dim, num_layers, num_classes=NUM_CLASSES, dropout_rate=0.0):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
@@ -307,7 +307,7 @@ def kfold_training(sequences, labels):
         cm_svg_path = os.path.join(RESULT_DIR, f"fold_{fold_idx}_cm.svg")
         plt.savefig(cm_pdf_path, bbox_inches='tight')
         plt.savefig(cm_svg_path, bbox_inches='tight')
-        plt.show()
+        plt.close()
 
         # 儲存模型
         model_save_path = os.path.join(RESULT_DIR, f"fold_{fold_idx}_model.pth")
@@ -422,7 +422,6 @@ def plot_overlaid_metrics(all_folds_metrics):
         svg_path = os.path.join(RESULT_DIR, f"combined_{col}.svg")
         plt.savefig(pdf_path, bbox_inches='tight')
         plt.savefig(svg_path, bbox_inches='tight')
-        plt.show()
         plt.close()
 
 
@@ -476,10 +475,10 @@ if __name__ == "__main__":
             print(f"Label {label} ({folder}): {count} chunks")
     else:
         # 超參數
-        batch_size_values = [8, 16, 32]
-        learning_rate_values = [1e-2, 1e-3, 1e-1, 1e-4]
-        max_seq_len_values = [10, 20, 30, 40]
-        stride_values = [1]
+        batch_size_values = [16]
+        learning_rate_values = [0.01]
+        max_seq_len_values = [15]
+        stride_values = [5]
 
         # 儲存所有實驗結果記錄
         overall_experiment_logs = []
