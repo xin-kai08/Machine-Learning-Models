@@ -1,11 +1,12 @@
 import os
 import glob
 import random
-
 import numpy as np
 import torch
 import torch.nn as nn
 import pandas as pd
+import joblib
+
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, random_split
 from sklearn.preprocessing import StandardScaler
 
@@ -22,12 +23,12 @@ NUM_CLASSES = 4        # 之前是 4 類：正常 + 三種異常
 BATCH_SIZE = 16
 MAX_SEQ_LEN = 15
 STRIDE = 5
-EPOCHS = 10            # fine-tune 不要太多，先試 3~5
+EPOCHS = 15            # fine-tune 不要太多，先試 3~5
 LR = 1e-3              # 比原本小一點
 
 # 這裡你可以決定「特殊樣本」視為哪一類
 SPECIAL_LABEL = 1
-
+SCALER_SAVE_PATH = r"C:/Users/boss9/OneDrive/桌面/專題/機器學習/result/20251115_scaler.pkl"
 
 # -----------------------------
 # 2. LSTM 模型（要跟你原本的一模一樣）
@@ -160,28 +161,37 @@ def build_datasets():
 def train_finetune(model, dataset):
     model.to(DEVICE)
 
-    # --------------------
-    # 1) 先把整個 dataset 拉出來做標準化
-    # --------------------
-    all_x = []
-    all_y = []
-    for x, y in dataset:
-        all_x.append(x.numpy())   # (seq_len, 4)
-        all_y.append(y.item())
-    all_x = np.stack(all_x, axis=0)      # (N, seq_len, 4)
-    all_y = np.array(all_y, dtype=np.int64)
+    # 1) 只訓練最後一層 fc（比較穩定）
+    for name, param in model.named_parameters():
+        if "fc" not in name:
+            param.requires_grad = False
 
-    N, T, F = all_x.shape
+    # 2) 先把整個 dataset 抽出來，準備做 StandardScaler
+    xs = []
+    ys = []
+    for x, y in dataset:  # x: (seq_len, 4), y: scalar
+        xs.append(x.numpy())
+        ys.append(int(y))
+
+    xs = np.stack(xs, axis=0).astype(np.float32)  # (N, T, 4)
+    ys = np.array(ys, dtype=np.int64)
+
+    N, T, F = xs.shape
+    # 3) 對所有 sample 做標準化 (samples * seq_len, features)
     scaler = StandardScaler()
-    all_x_2d = all_x.reshape(-1, F)
-    all_x_2d = scaler.fit_transform(all_x_2d)
-    all_x = all_x_2d.reshape(N, T, F)
+    xs_2d = xs.reshape(-1, F)
+    xs_2d = scaler.fit_transform(xs_2d)
+    xs_scaled = xs_2d.reshape(N, T, F)
 
-    # 重新包成 Dataset / DataLoader
-    tensor_x = torch.tensor(all_x, dtype=torch.float32)
-    tensor_y = torch.tensor(all_y, dtype=torch.long)
+    # 4) 存成 pkl，之後推論要跟這顆 e10 模型一起用
+    joblib.dump(scaler, SCALER_SAVE_PATH)
+    print("✅ Saved scaler to:", SCALER_SAVE_PATH)
 
+    # 5) 把標準化後的資料包成新的 Dataset / DataLoader
+    tensor_x = torch.tensor(xs_scaled, dtype=torch.float32)
+    tensor_y = torch.tensor(ys, dtype=torch.long)
     finetune_dataset = torch.utils.data.TensorDataset(tensor_x, tensor_y)
+
     dataloader = DataLoader(
         finetune_dataset,
         batch_size=BATCH_SIZE,
@@ -189,23 +199,13 @@ def train_finetune(model, dataset):
         drop_last=False,
     )
 
-    # --------------------
-    # 2) 只微調最後一層 fc（其他層凍結）
-    # --------------------
-    for name, param in model.named_parameters():
-        if "fc" not in name:
-            param.requires_grad = False
-
-    # 定義 loss & optimizer  (這就是你原本缺的)
-    criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=LR,
     )
+    criterion = nn.CrossEntropyLoss()
 
-    # --------------------
-    # 3) 訓練 loop
-    # --------------------
+    # 6) 訓練 loop
     model.train()
     for epoch in range(1, EPOCHS + 1):
         total_loss = 0.0
@@ -242,7 +242,7 @@ def main():
     model = train_finetune(model, finetune_dataset)
 
     # 存成新的 finetune 模型
-    save_path = r"C:/Users/boss9/OneDrive/桌面/專題/機器學習/result/2025_finetune_1112_e10_model.pth"
+    save_path = r"C:/Users/boss9/OneDrive/桌面/專題/機器學習/result/20251115_TLfinetune_e15_model.pth"
     torch.save(model.state_dict(), save_path)
     print("✅ Saved finetuned model to:", save_path)
 
