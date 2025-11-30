@@ -14,10 +14,10 @@ from tensorflow import keras
 from tensorflow.keras import layers
 
 # =====================
-# 路徑與資料配置（與原檔案保持一致）
+# 路徑與資料配置
 # =====================
 BASE_PATH = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware"
-RESULT_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\keras\20250819"
+RESULT_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\20251129_keras"
 
 LABEL_DIRS = {
     0: os.path.join(BASE_PATH, "normal"),
