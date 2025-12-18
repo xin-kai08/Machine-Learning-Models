@@ -27,6 +27,20 @@ class ChargeSequenceDataset2D(Dataset):
     def __len__(self): return len(self.X)
     def __getitem__(self, idx): return self.X[idx], self.y[idx]
 
+def make_tag(**kwargs):
+    """
+    產生檔名用 tag：只包含 value != None 的項目。
+    float 會把 '.' 轉成 'p'，避免檔名怪字元。
+    """
+    parts = []
+    for k, v in kwargs.items():
+        if v is None:
+            continue
+        if isinstance(v, float):
+            v = str(v).replace('.', 'p')
+        parts.append(f"{k}{v}")
+    return "_".join(parts) if parts else "default"
+
 # === 通用版 train_and_search_model ===
 def train_and_search_model(model_class, model_args, DatasetClass,
                            X_filename, y_filename,
@@ -50,7 +64,7 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                 
                 PREPROCESSED_DIR = base_preprocessed_dir
 
-                acc_curves, loss_curves, f1_curves = [], [], []
+                acc_curves, loss_curves, f1_curves, recall_curves = [], [], [], []
                 acc_train_curves, loss_train_curves = [], []
                 all_y_true, all_y_pred = [], []
 
@@ -73,7 +87,7 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                     optimizer = optim.Adam(model.parameters(), lr=lr)
                     criterion = nn.CrossEntropyLoss()
 
-                    acc_list, loss_list, f1_list = [], [], []
+                    acc_list, loss_list, f1_list, recall_list = [], [], [], []
                     acc_train_list, loss_train_list = [], []
 
                     for epoch in range(num_epochs):
@@ -116,10 +130,12 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                         acc = correct / total
                         avg_loss = total_loss / total
                         f1 = f1_score(y_true_epoch, y_pred_epoch, average='macro', zero_division=0)
+                        rec = recall_score(y_true_epoch, y_pred_epoch, average='macro', zero_division=0)
 
                         acc_list.append(acc)
                         loss_list.append(avg_loss)
                         f1_list.append(f1)
+                        recall_list.append(rec)
 
                         if (epoch + 1) % 10 == 0:
                             print(f"    [Fold {fold_idx}] Epoch {epoch+1}/{num_epochs} | Acc: {acc:.4f} | Loss: {avg_loss:.4f}")
@@ -127,6 +143,7 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                     acc_curves.append(acc_list)
                     loss_curves.append(loss_list)
                     f1_curves.append(f1_list)
+                    recall_curves.append(recall_list)
                     acc_train_curves.append(acc_train_list)
                     loss_train_curves.append(loss_train_list)
                     all_y_true.extend(y_true_epoch)
@@ -134,8 +151,11 @@ def train_and_search_model(model_class, model_args, DatasetClass,
 
                 t1 = time.time()
 
+                extra = {k: v for k, v in model_args.items() if k not in ("input_dim", "num_classes")}
+                tag = make_tag(BS=bs, LR=lr, SEQ=seq_len, **extra)
+
                 # === 曲線繪製 ===
-                def plot_metric_per_fold(fold_lists, metric_name, folder):
+                def plot_metric_per_fold(fold_lists, metric_name, folder, tag):
                     plt.figure(figsize=(10, 6))
                     for fold_idx, fold_metric in enumerate(fold_lists):
                         plt.plot(range(1, num_epochs + 1), fold_metric, label=f"Fold {fold_idx + 1}")
@@ -146,25 +166,26 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                         plt.ylim(0, 1.0)
                     plt.grid(True)
                     plt.legend()
-                    path = os.path.join(RESULT_DIR, f"{metric_name}_curve.png")
+                    path = os.path.join(folder, f"{metric_name}_curve_{tag}.png")   
                     plt.savefig(path, bbox_inches='tight')
                     plt.close()
 
-                plot_metric_per_fold(acc_curves, "accuracy", RESULT_DIR)
-                plot_metric_per_fold(loss_curves, "loss", RESULT_DIR)
-                plot_metric_per_fold(f1_curves, "f1_score", RESULT_DIR)
-                plot_metric_per_fold(acc_train_curves, "train_accuracy", RESULT_DIR)
-                plot_metric_per_fold(loss_train_curves, "train_loss", RESULT_DIR)
+                plot_metric_per_fold(acc_curves, "accuracy", RESULT_DIR, tag)
+                plot_metric_per_fold(loss_curves, "loss", RESULT_DIR, tag)
+                plot_metric_per_fold(f1_curves, "f1_score", RESULT_DIR, tag)
+                plot_metric_per_fold(recall_curves, "recall", RESULT_DIR, tag)
+                plot_metric_per_fold(acc_train_curves, "train_accuracy", RESULT_DIR, tag)
+                plot_metric_per_fold(loss_train_curves, "train_loss", RESULT_DIR, tag)
 
                 cm = confusion_matrix(all_y_true, all_y_pred)
                 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=np.unique(all_y_true))
                 disp.plot(cmap='Blues', values_format='d')
                 plt.title(f"Confusion Matrix\nBS={bs} LR={lr} SEQ={seq_len}")
-                plt.savefig(os.path.join(RESULT_DIR, "confusion_matrix.png"), bbox_inches='tight')
+                plt.savefig(os.path.join(RESULT_DIR, f"confusion_matrix_{tag}.png"), bbox_inches='tight')
                 plt.close()
 
                 final_result = {
-                    'trial_number': trial.number,
+                    'trial_number': trial.number if trial else -1,
                     'batch_size': bs,
                     'learning_rate': lr,
                     'seq_len': seq_len,
@@ -179,8 +200,8 @@ def train_and_search_model(model_class, model_args, DatasetClass,
                     'tf_heads': model_args.get('num_heads', None),
                     
                     # 最終結果
-                    'final_acc': acc_list[-1],
-                    'final_loss': loss_list[-1],
+                    'final_acc': float(np.mean([curve[-1] for curve in acc_curves])),
+                    'final_loss': float(np.mean([curve[-1] for curve in loss_curves])),
                     'precision': precision_score(all_y_true, all_y_pred, average='macro', zero_division=0),
                     'recall': recall_score(all_y_true, all_y_pred, average='macro', zero_division=0),
                     'f1_score': f1_score(all_y_true, all_y_pred, average='macro', zero_division=0),
@@ -208,7 +229,7 @@ def train_and_search_model(model_class, model_args, DatasetClass,
     print(f"\n📄 All experiment results saved to {csv_path}")
 
     if not df.empty:
-        best = df.loc[df['final_acc'].idxmax()]
+        best = df.loc[df['f1_score'].idxmax()]
         print(f"\n🏆 Best: BS={best['batch_size']} | LR={best['learning_rate']} | SEQ={best['seq_len']} | ACC={best['final_acc']:.4f}")
         return results, best
     else:
@@ -270,7 +291,8 @@ def train_and_search_model_svm(model_class, model_args, DatasetClass,
                     disp.plot(cmap='Blues', values_format='d')
                     plt.title(f"Confusion Matrix\nSVM (C={C}, kernel={kernel}, seq={seq_len})")
                     os.makedirs(RESULT_DIR, exist_ok=True)
-                    plt.savefig(os.path.join(RESULT_DIR, "confusion_matrix.png"), bbox_inches='tight')
+                    tag = make_tag(C=C, K=kernel, SEQ=seq_len)
+                    plt.savefig(os.path.join(RESULT_DIR, f"confusion_matrix_{tag}.png"), bbox_inches='tight')
                     plt.close()
 
     # === 儲存 CSV 到 RESULT_DIR ===
@@ -287,16 +309,16 @@ def train_and_search_model_svm(model_class, model_args, DatasetClass,
 
 def objective(trial, model_name, stride):
     # === 通用參數 ===
-    bs = trial.suggest_categorical("batch_size", [8, 16, 32])
-    lr = trial.suggest_categorical("learning_rate", [1e-1, 1e-2, 1e-3, 1e-4])
-    seq_len = trial.suggest_categorical("seq_len", [10, 20, 30, 40])
+    bs = trial.suggest_categorical("batch_size", [8, 16])
+    lr = trial.suggest_categorical("learning_rate", [5e-4, 1e-3, 2e-3])
+    seq_len = trial.suggest_categorical("seq_len", [20, 30, 45])
     trial.set_user_attr("model", model_name)
     trial.set_user_attr("stride", stride)
-    dropout_rate = trial.suggest_categorical("dropout_rate", [0.0, 0.3])
+    dropout_rate = trial.suggest_categorical("dropout_rate", [0.2, 0.3, 0.4, 0.5, 0.6])
 
     # === 根據模型選擇 Dataset 類型、suffix 以及模型超參數 ===
     if model_name == "MLP":
-        hidden_dim = trial.suggest_categorical("mlp_hidden", [16, 32, 64])
+        hidden_dim = trial.suggest_categorical("mlp_hidden", [16])
         model_class = MLPClassifier
         model_args = {
             'input_dim': 16,
@@ -308,9 +330,9 @@ def objective(trial, model_name, stride):
         suffix = "2d"
 
     elif model_name == "SVM":
-        C = trial.suggest_categorical("svm_C", [0.1, 1.0, 10.0])
+        C = trial.suggest_categorical("svm_C", [0.1, 1.0])
         kernel = trial.suggest_categorical("svm_kernel", ["linear", "rbf"])
-        seq_len = trial.suggest_categorical("seq_len", [10, 20, 30, 40])
+        seq_len = trial.suggest_categorical("seq_len", [5, 10, 15, 20])
         suffix = "2d"
 
         pre_dir = os.path.join(base_data_path, "2D")
@@ -327,12 +349,12 @@ def objective(trial, model_name, stride):
             base_preprocessed_dir=pre_dir,
             trial=trial
         )
-        return best['final_acc'] if best is not None else 0.0
+        return float(best['f1_score']) if best is not None else 0.0
 
     # lstm_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 1, 'num_classes': 4}
     elif model_name == "LSTM":
-        hidden_dim = trial.suggest_categorical("lstm_hidden", [16, 32, 64])
-        num_layers = trial.suggest_categorical("lstm_layers", [1, 2, 3, 4])
+        hidden_dim = trial.suggest_categorical("lstm_hidden", [32, 64])
+        num_layers = trial.suggest_categorical("lstm_layers", [2, 3])
         model_class = LSTMClassifier
         model_args = {
             'input_dim': 4,
@@ -346,8 +368,8 @@ def objective(trial, model_name, stride):
 
     # gru_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 1, 'num_classes': 4}
     elif model_name == "GRU":
-        hidden_dim = trial.suggest_categorical("gru_hidden", [16, 32, 64])
-        num_layers = trial.suggest_categorical("gru_layers", [1, 2, 3, 4])
+        hidden_dim = trial.suggest_categorical("gru_hidden", [16])
+        num_layers = trial.suggest_categorical("gru_layers", [1])
         model_class = GRUClassifier
         model_args = {
             'input_dim': 4,
@@ -361,9 +383,9 @@ def objective(trial, model_name, stride):
 
     # cnn_args = {'input_dim': 4, 'num_classes': 4}
     elif model_name == "1D CNN":
-        channels1 = trial.suggest_categorical("cnn_channels1", [16, 32, 64])
-        channels2 = trial.suggest_categorical("cnn_channels2", [32, 64, 128])
-        kernel_size = trial.suggest_categorical("cnn_kernel_size", [3, 5])
+        channels1 = trial.suggest_categorical("cnn_channels1", [16])
+        channels2 = trial.suggest_categorical("cnn_channels2", [32])
+        kernel_size = trial.suggest_categorical("cnn_kernel_size", [3])
 
         model_class = CNN1DClassifier
         model_args = {
@@ -379,8 +401,8 @@ def objective(trial, model_name, stride):
 
     # timesnet_args = {'input_dim': 4, 'hidden_dim': 64, 'num_layers': 2, 'num_classes': 4}
     elif model_name == "TimesNet":
-        hidden_dim = trial.suggest_categorical("times_hidden", [16, 32, 64])
-        num_layers = trial.suggest_categorical("times_layers", [1, 2, 3, 4])
+        hidden_dim = trial.suggest_categorical("times_hidden", [16])
+        num_layers = trial.suggest_categorical("times_layers", [1, 2])
         model_class = TimesNetClassifier
         model_args = {
             'input_dim': 4,
@@ -393,9 +415,9 @@ def objective(trial, model_name, stride):
 
     # transformer_args = {'input_dim': 4, 'num_heads': 2, 'num_layers': 2, 'hidden_dim': 64, 'num_classes': 4}
     elif model_name == "Transformer":
-        num_heads = trial.suggest_categorical("tf_heads", [2, 4])
-        num_layers = trial.suggest_int("tf_layers", 1, 4)
-        hidden_dim = trial.suggest_categorical("tf_hidden", [16, 32, 64])
+        num_heads = trial.suggest_categorical("tf_heads", [2])
+        num_layers = trial.suggest_categorical("tf_layers", [1])
+        hidden_dim = trial.suggest_categorical("tf_hidden", [16])
         model_class = TransformerClassifier
         model_args = {
             'input_dim': 4,
@@ -430,7 +452,7 @@ def objective(trial, model_name, stride):
         trial=trial
     )
 
-    return best['final_acc'] if best is not None else 0.0
+    return float(best['f1_score']) if best is not None else 0.0
 
 # === LSTMClassifier ===
 class LSTMClassifier(nn.Module):
@@ -561,14 +583,14 @@ if __name__ == "__main__":
     # 超參數搜尋設定
     num_epochs = 100
     feature_dim = 4
-    n_trials = 10
+    n_trials = 50
     base_data_path = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware\preprocessed_kfold"
-    base_result_path = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\model compare\result\feature dim_4\hardware\model"
+    base_result_path = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\1218"
 
     # 執行 Optuna 搜尋
     # 模型順序清單["LSTM", "MLP", "SVM", "GRU", "1D CNN", "TimesNet", "Transformer"]
-    model_list = ["SVM"]
-    stride_list = [10]
+    model_list = ["LSTM"]
+    stride_list = [1]
     
     for model_name in model_list:
         if model_name in ["MLP", "SVM"]:
@@ -590,5 +612,15 @@ if __name__ == "__main__":
 
             study = optuna.create_study(direction="maximize")
             study.optimize(wrapped_objective, n_trials=n_trials)
+            
+            # === 輸出 Top-K trials ===
+            top_k = 10
+            trials_df = study.trials_dataframe(attrs=("number", "value", "params", "state"))
+            trials_df = trials_df[trials_df["state"] == "COMPLETE"].copy()
+            trials_df = trials_df.sort_values("value", ascending=False).head(top_k)
 
-            print(f"✅ Best for {model_name} (stride={stride}): ACC={study.best_value:.4f}")
+            result_root = os.path.join(base_result_path, model_name, f"stride_{stride}")
+            topk_path = os.path.join(result_root, f"top_{top_k}_trials.csv")
+            trials_df.to_csv(topk_path, index=False)
+            print(f"[INFO] Top-{top_k} trials saved to: {topk_path}")
+            print(f"✅ Best for {model_name} (stride={stride}): F1={study.best_value:.4f}")

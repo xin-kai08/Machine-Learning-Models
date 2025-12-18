@@ -153,12 +153,12 @@ def compare_lstm_param_sliding(param_name, param_values,
     plt.close("all")
 
 compare_lstm_param_sliding(
-    param_name="seq_len",              # 要比較的超參數 seq_len, batch_size, learning_rate
-    param_values=[1, 3, 5, 7, 10, 15, 20],
-    RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\feature dim_4\hardware\compare_seq_len",
+    param_name="learning_rate",              # 要比較的超參數 seq_len, batch_size, learning_rate
+    param_values=[0.1, 0.01, 0.001, 0.0001],
+    RESULT_DIR=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\compare\result\feature dim_4\hardware\compare_learning_rate",
     suffix="3d",
     base_preprocessed_dir=r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware\preprocessed_kfold\3D\stride_5",
     stride=5,
-    bs=16, lr=0.01, seq_len=10,
+    bs=16, lr=0.01, seq_len=15,
     num_epochs=100, k_folds=5
 )
