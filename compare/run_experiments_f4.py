@@ -583,9 +583,9 @@ if __name__ == "__main__":
     # 超參數搜尋設定
     num_epochs = 100
     feature_dim = 4
-    n_trials = 50
-    base_data_path = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware\preprocessed_kfold"
-    base_result_path = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\1218"
+    n_trials = 100
+    base_data_path = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\dataset\feature dim_4\hardware\preprocessed_kfold"
+    base_result_path = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\result\1221"
 
     # 執行 Optuna 搜尋
     # 模型順序清單["LSTM", "MLP", "SVM", "GRU", "1D CNN", "TimesNet", "Transformer"]

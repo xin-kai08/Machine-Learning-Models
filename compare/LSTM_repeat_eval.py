@@ -1,5 +1,3 @@
-# 0725後為滑動視窗
-
 import os
 import numpy as np
 import pandas as pd
@@ -13,10 +11,11 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.preprocessing import StandardScaler
 import argparse
 import time
+import random
 
 # 資料集根目錄
-BASE_PATH = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware"
-RESULT_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\pytorch\20250819"
+BASE_PATH = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\dataset\feature dim_4\hardware"
+RESULT_DIR = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\result\pytorch\20251228"
 
 # 各分類資料夾設定
 LABEL_DIRS = {
@@ -28,17 +27,22 @@ LABEL_DIRS = {
 
 # 設定參數
 MAX_SEQ_LEN = 15
-STRIDE = 5  # 每次滑動幾步
-
+STRIDE = 5
 INPUT_DIM = 4
 HIDDEN_DIM = 16
 NUM_LAYERS = 1
 DROPOUT_RATE = 0.0
 NUM_CLASSES = len(LABEL_DIRS)
 NUM_EPOCHS = 100
-
 KFOLD_SPLITS = 5
 SEED = 42
+
+def set_global_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 os.makedirs(RESULT_DIR, exist_ok=True)
 
@@ -480,105 +484,97 @@ if __name__ == "__main__":
             count = count_chunks_in_folder(folder, max_seq_len=MAX_SEQ_LEN)
             print(f"Label {label} ({folder}): {count} chunks")
     else:
-        # 超參數
-        hidden_dim_values = [16, 32, 64]
-        num_layers_values = [1, 2, 3]
-        batch_size_values = [16]
-        learning_rate_values = [0.01]
-        max_seq_len_values = [15]
-        stride_values = [5]
-        dropout_values = [0.0, 0.2, 0.5]
+        # ===== 只跑 5 組參數，每組重跑 3 次 =====
+        REPEATS = 3
+        PLOT_CURVES = False  # 重跑很多次時建議先關掉，省超多時間/CPU
 
-        # 儲存所有實驗結果記錄
-        overall_experiment_logs = []
-        # 記錄所有實驗的總結果（此 log 最後存成 CSV 檔）
+        # 你說的 5 組 F1>0.99（stride 先用 1；如果你要維持原本 stride=5 就改這裡）
+        configs = [
+            {"name": "A",   "bs": 8,  "lr": 0.001,  "seq": 30, "stride": 1, "hd": 64, "nl": 3, "do": 0.2},
+            {"name": "B",   "bs": 8,  "lr": 0.0005, "seq": 30, "stride": 1, "hd": 64, "nl": 3, "do": 0.3},
+            {"name": "C",   "bs": 8,  "lr": 0.0005, "seq": 45, "stride": 1, "hd": 64, "nl": 3, "do": 0.3},
+            {"name": "D",   "bs": 16, "lr": 0.002,  "seq": 30, "stride": 1, "hd": 64, "nl": 3, "do": 0.3},
+            {"name": "E",   "bs": 8,  "lr": 0.001,  "seq": 45, "stride": 1, "hd": 64, "nl": 2, "do": 0.5},
+        ]
+
         overall_results = []
-
-        # 保存原始的 RESULT_DIR 值，方便還原
         original_RESULT_DIR = RESULT_DIR
 
-        # 依照超參數組合進行迴圈
-        for stride in stride_values:
-            STRIDE = stride
-            for bs in batch_size_values:
-                for lr in learning_rate_values:
-                    for seq in max_seq_len_values:
-                        for hd in hidden_dim_values:
-                            for nl in num_layers_values:
-                                for dr in dropout_values:
+        for cfg in configs:
+            for rep in range(1, REPEATS + 1):
+                # 這個 seed 只用來影響初始化/訓練隨機性；KFold split 仍然用你原本 SEED 保持一致
+                set_global_seed(SEED + rep)
 
-                                    # 更新全域變數（注意：這裡是更新本模組內的變數）
-                                    BATCH_SIZE = bs
-                                    LEARNING_RATE = lr
-                                    MAX_SEQ_LEN = seq
-                                    HIDDEN_DIM = hd
-                                    NUM_LAYERS = nl
-                                    DROPOUT_RATE = dr
+                # 更新全域超參數（你原本就是這樣做的）:contentReference[oaicite:3]{index=3}
+                STRIDE = cfg["stride"]
+                BATCH_SIZE = cfg["bs"]
+                LEARNING_RATE = cfg["lr"]
+                MAX_SEQ_LEN = cfg["seq"]
+                HIDDEN_DIM = cfg["hd"]
+                NUM_LAYERS = cfg["nl"]
+                DROPOUT_RATE = cfg["do"]
 
-                                    # 為每組參數建立獨立儲存結果的資料夾
-                                    exp_id = f"bs_{bs}_lr_{lr}_seq_{seq}_stride_{stride}_hd_{hd}_nl_{nl}_do_{dr}"
-                                    print(f"\n==== Running experiment: {exp_id} ====")
-                                    exp_result_dir = os.path.join(original_RESULT_DIR, exp_id)
-                                    os.makedirs(exp_result_dir, exist_ok=True)
+                exp_id = (
+                    f"{cfg['name']}_rep{rep}"
+                    f"_bs{BATCH_SIZE}_lr{LEARNING_RATE}_seq{MAX_SEQ_LEN}_stride{STRIDE}"
+                    f"_hd{HIDDEN_DIM}_nl{NUM_LAYERS}_do{DROPOUT_RATE}"
+                )
 
-                                    # 暫時改寫 RESULT_DIR，讓後續的儲存檔案寫入此目錄（一定要保護還原）
-                                    _prev_result_dir = RESULT_DIR
-                                    RESULT_DIR = exp_result_dir
+                print(f"\n==== Running experiment: {exp_id} ====")
+                exp_result_dir = os.path.join(original_RESULT_DIR, exp_id)
+                os.makedirs(exp_result_dir, exist_ok=True)
 
-                                    try:
-                                        # 載入資料（會根據 MAX_SEQ_LEN / STRIDE 切分資料）
-                                        all_sequences, all_labels = load_data()
+                _prev_result_dir = RESULT_DIR
+                RESULT_DIR = exp_result_dir
 
-                                        # 執行 K-fold 訓練
-                                        final_metrics_df, all_folds_metrics = kfold_training(all_sequences, all_labels)
+                try:
+                    all_sequences, all_labels = load_data()
+                    final_metrics_df, all_folds_metrics = kfold_training(all_sequences, all_labels)
 
-                                        # 繪製指標曲線圖
-                                        plot_metric_curves(all_folds_metrics)
-                                        plot_overlaid_metrics(all_folds_metrics)
+                    if PLOT_CURVES:
+                        plot_metric_curves(all_folds_metrics)
+                        plot_overlaid_metrics(all_folds_metrics)
 
-                                        # 儲存本次實驗的最終指標 log
-                                        log_csv_path = os.path.join(RESULT_DIR, "final_metrics.csv")
-                                        final_metrics_df.to_csv(log_csv_path, index=False)
-                                        print(f"Final metrics logged at: {log_csv_path}")
+                    # 本次實驗的最終指標 log
+                    log_csv_path = os.path.join(RESULT_DIR, "final_metrics.csv")
+                    final_metrics_df.to_csv(log_csv_path, index=False)
+                    print(f"Final metrics logged at: {log_csv_path}")
 
-                                        # 將本次實驗資訊存入 overall_experiment_logs
-                                        overall_experiment_logs.append({
-                                            'experiment_id': exp_id,
-                                            'batch_size': bs,
-                                            'learning_rate': lr,
-                                            'max_seq_len': seq,
-                                            'stride': stride,
-                                            'hidden_dim': hd,
-                                            'num_layers': nl,
-                                            'dropout': dr,
-                                            'final_metrics': final_metrics_df
-                                        })
+                    # 把這次結果整理進總表（平均 across folds）
+                    overall_results.append({
+                        "experiment_id": exp_id,
+                        "config_name": cfg["name"],
+                        "repeat": rep,
+                        "batch_size": BATCH_SIZE,
+                        "learning_rate": LEARNING_RATE,
+                        "max_seq_len": MAX_SEQ_LEN,
+                        "stride": STRIDE,
+                        "hidden_dim": HIDDEN_DIM,
+                        "num_layers": NUM_LAYERS,
+                        "dropout": DROPOUT_RATE,
+                        "post_train_acc": float(final_metrics_df["Post-train Accuracy"].mean()),
+                        "precision": float(final_metrics_df["Precision"].mean()),
+                        "recall": float(final_metrics_df["Recall"].mean()),
+                        "f1_score": float(final_metrics_df["F1-Score"].mean()),
+                    })
 
-                                        # 將各折最終的平均值記錄下來（best_result 會用到）
-                                        overall_results.append({
-                                            'experiment_id': exp_id,
-                                            'batch_size': bs,
-                                            'learning_rate': lr,
-                                            'max_seq_len': seq,
-                                            'stride': stride,
-                                            'hidden_dim': hd,
-                                            'num_layers': nl,
-                                            'dropout': dr,
-                                            'pre_train_loss': final_metrics_df['Pre-train Loss'].mean(),
-                                            'pre_train_acc': final_metrics_df['Pre-train Accuracy'].mean(),
-                                            'post_train_loss': final_metrics_df['Post-train Loss'].mean(),
-                                            'post_train_acc': final_metrics_df['Post-train Accuracy'].mean(),
-                                            'precision': final_metrics_df['Precision'].mean(),
-                                            'recall': final_metrics_df['Recall'].mean(),
-                                            'f1_score': final_metrics_df['F1-Score'].mean()
-                                        })
+                finally:
+                    RESULT_DIR = _prev_result_dir
 
-                                    finally:
-                                        # 無論成功/失敗都一定要還原，不然後面結果會亂寫
-                                        RESULT_DIR = _prev_result_dir
-
-        # 儲存所有實驗的總結果 log
-        overall_log_path = os.path.join(RESULT_DIR, "overall_experiment_log.csv")
+        # 存總結果
+        overall_log_path = os.path.join(original_RESULT_DIR, "overall_experiment_log.csv")
         overall_df = pd.DataFrame(overall_results)
         overall_df.to_csv(overall_log_path, index=False)
         print(f"Overall experiment log saved at: {overall_log_path}")
+
+        # 另外做一份「每組 config 的平均/標準差」摘要
+        summary = (
+            overall_df.groupby("config_name")["f1_score"]
+            .agg(["mean", "std", "max", "min", "count"])
+            .reset_index()
+            .sort_values("mean", ascending=False)
+        )
+        summary_path = os.path.join(original_RESULT_DIR, "summary_by_config.csv")
+        summary.to_csv(summary_path, index=False)
+        print(f"Summary saved at: {summary_path}")
+        print(summary.to_string(index=False))

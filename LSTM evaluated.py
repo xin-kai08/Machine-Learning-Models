@@ -112,7 +112,7 @@ def main():
     loader = build_loader_special()
 
     base_path = r"C:/Users/boss9/OneDrive/桌面/專題/機器學習/esp to python/樹莓派/20250819_fold_1_model.pth"
-    ft_path   = r"C:/Users/boss9/OneDrive/桌面/專題/機器學習/result/2025_finetune_1112_e10_model.pth"
+    ft_path   = r"C:/Users/boss9/OneDrive/桌面/專題/機器學習/result/20251130_TLfinetune_model.pth"
 
     base_model = load_model(base_path)
     ft_model   = load_model(ft_path)
