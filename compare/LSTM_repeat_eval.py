@@ -15,7 +15,7 @@ import random
 
 # 資料集根目錄
 BASE_PATH = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\dataset\feature dim_4\hardware"
-RESULT_DIR = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\result\pytorch\20251228"
+RESULT_DIR = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\result\pytorch\20260104"
 
 # 各分類資料夾設定
 LABEL_DIRS = {
@@ -490,11 +490,10 @@ if __name__ == "__main__":
 
         # 你說的 5 組 F1>0.99（stride 先用 1；如果你要維持原本 stride=5 就改這裡）
         configs = [
-            {"name": "A",   "bs": 8,  "lr": 0.001,  "seq": 30, "stride": 1, "hd": 64, "nl": 3, "do": 0.2},
-            {"name": "B",   "bs": 8,  "lr": 0.0005, "seq": 30, "stride": 1, "hd": 64, "nl": 3, "do": 0.3},
-            {"name": "C",   "bs": 8,  "lr": 0.0005, "seq": 45, "stride": 1, "hd": 64, "nl": 3, "do": 0.3},
-            {"name": "D",   "bs": 16, "lr": 0.002,  "seq": 30, "stride": 1, "hd": 64, "nl": 3, "do": 0.3},
-            {"name": "E",   "bs": 8,  "lr": 0.001,  "seq": 45, "stride": 1, "hd": 64, "nl": 2, "do": 0.5},
+            {"name": "A",   "bs": 8,  "lr": 0.0005, "seq": 45, "stride": 1, "hd": 64, "nl": 3, "do": 0.3},
+            {"name": "B",   "bs": 8,  "lr": 0.0005, "seq": 45, "stride": 1, "hd": 64, "nl": 2, "do": 0.3},
+            {"name": "C",   "bs": 8,  "lr": 0.0005, "seq": 45, "stride": 1, "hd": 64, "nl": 4, "do": 0.3},
+            {"name": "D",   "bs": 16, "lr": 0.0005, "seq": 45, "stride": 1, "hd": 64, "nl": 4, "do": 0.4},
         ]
 
         overall_results = []

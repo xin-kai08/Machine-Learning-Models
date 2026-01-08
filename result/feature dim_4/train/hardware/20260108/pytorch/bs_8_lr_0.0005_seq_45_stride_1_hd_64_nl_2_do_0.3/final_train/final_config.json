@@ -1,0 +1,10 @@
+{
+  "BATCH_SIZE": 8,
+  "LEARNING_RATE": 0.0005,
+  "MAX_SEQ_LEN": 45,
+  "STRIDE": 1,
+  "HIDDEN_DIM": 64,
+  "NUM_LAYERS": 2,
+  "DROPOUT_RATE": 0.3,
+  "NUM_EPOCHS": 100
+}

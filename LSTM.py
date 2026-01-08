@@ -13,10 +13,12 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.preprocessing import StandardScaler
 import argparse
 import time
+import random
+import joblib
 
 # 資料集根目錄
-BASE_PATH = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\dataset\feature dim_4\hardware"
-RESULT_DIR = r"C:\Users\boss9\OneDrive\桌面\專題\機器學習\result\pytorch\20250819"
+BASE_PATH = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\dataset\feature dim_4\hardware"
+RESULT_DIR = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\result\pytorch\20260108"
 
 # 各分類資料夾設定
 LABEL_DIRS = {
@@ -27,13 +29,13 @@ LABEL_DIRS = {
 }
 
 # 設定參數
-MAX_SEQ_LEN = 15
-STRIDE = 5  # 每次滑動幾步
+MAX_SEQ_LEN = 45
+STRIDE = 1  # 每次滑動幾步
 
 INPUT_DIM = 4
-HIDDEN_DIM = 16
-NUM_LAYERS = 1
-DROPOUT_RATE = 0.0
+HIDDEN_DIM = 64
+NUM_LAYERS = 2
+DROPOUT_RATE = 0.3
 NUM_CLASSES = len(LABEL_DIRS)
 NUM_EPOCHS = 100
 
@@ -42,6 +44,13 @@ SEED = 42
 
 os.makedirs(RESULT_DIR, exist_ok=True)
 
+def set_global_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        
 # === 資料處理 ===
 def process_file(file_path, label, sequences, labels, max_seq_len=MAX_SEQ_LEN):
     """
@@ -158,6 +167,34 @@ def evaluate_model(model, loader, criterion, device):
     avg_acc = correct / total if total > 0 else 0
     return avg_loss, avg_acc
 
+def evaluate_with_prf(model, loader, device, num_classes=NUM_CLASSES):
+    """
+    回傳：acc, precision(macro), recall(macro), f1(macro), confusion_matrix
+    """
+    model.eval()
+    preds, trues = [], []
+    correct, total = 0, 0
+
+    with torch.no_grad():
+        for x_batch, y_batch in loader:
+            x_batch = x_batch.to(device)
+            y_batch = y_batch.to(device)
+            outputs = model(x_batch)
+            _, predicted = torch.max(outputs, 1)
+
+            preds.extend(predicted.cpu().numpy().tolist())
+            trues.extend(y_batch.cpu().numpy().tolist())
+
+            correct += (predicted == y_batch).sum().item()
+            total += y_batch.size(0)
+
+    acc = correct / total if total > 0 else 0
+    precision = precision_score(trues, preds, average='macro', zero_division=0)
+    recall = recall_score(trues, preds, average='macro', zero_division=0)
+    f1 = f1_score(trues, preds, average='macro', zero_division=0)
+
+    cm = confusion_matrix(trues, preds, labels=list(range(num_classes)))
+    return acc, precision, recall, f1, cm
 
 # === K-fold 訓練流程 ===
 def kfold_training(sequences, labels):
@@ -335,6 +372,175 @@ def kfold_training(sequences, labels):
     print(final_metrics_df.to_string(index=False))
     return final_metrics_df, all_folds_metrics
 
+def train_final_model(sequences, labels, save_dir: str, parent_result_dir: str = None):
+    os.makedirs(save_dir, exist_ok=True)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    # 1) scaler 用全資料 fit（部署就用同一顆）
+    scaler = StandardScaler()
+    X2d = sequences.reshape(-1, sequences.shape[-1])
+    scaler.fit(X2d)
+    sequences_scaled = scaler.transform(X2d).reshape(sequences.shape)
+
+    # 2) DataLoader
+    dataset = ChargingDataset(sequences_scaled, labels)
+    loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+    eval_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False)  # 用來評估與混淆矩陣
+
+    # 3) Model
+    model = LSTMClassifier(
+        INPUT_DIM, HIDDEN_DIM, NUM_LAYERS, NUM_CLASSES, dropout_rate=DROPOUT_RATE
+    ).to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+    # 4) Train + 記錄 epoch 指標
+    epoch_list = []
+    train_loss_list = []
+    train_acc_list = []
+    train_precision_list = []
+    train_recall_list = []
+    train_f1_list = []
+
+    for epoch in range(NUM_EPOCHS):
+        model.train()
+        running_loss, correct, total = 0.0, 0, 0
+
+        for x_batch, y_batch in loader:
+            x_batch = x_batch.to(device)
+            y_batch = y_batch.to(device)
+
+            optimizer.zero_grad()
+            outputs = model(x_batch)
+            loss = criterion(outputs, y_batch)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item() * x_batch.size(0)
+            _, predicted = torch.max(outputs, 1)
+            correct += (predicted == y_batch).sum().item()
+            total += y_batch.size(0)
+
+        epoch_loss = running_loss / total if total > 0 else 0
+        epoch_acc = correct / total if total > 0 else 0
+
+        # 這裡多算 macro P/R/F1（用全資料 eval_loader）
+        acc2, p, r, f1, _ = evaluate_with_prf(model, eval_loader, device, num_classes=NUM_CLASSES)
+
+        epoch_list.append(epoch + 1)
+        train_loss_list.append(epoch_loss)
+        train_acc_list.append(epoch_acc)
+        train_precision_list.append(p)
+        train_recall_list.append(r)
+        train_f1_list.append(f1)
+
+        print(f"[FINAL] Epoch {epoch+1:3d}/{NUM_EPOCHS} | "
+              f"Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f} | "
+              f"P: {p:.4f} R: {r:.4f} F1: {f1:.4f}")
+
+    # 5) 儲存 per-epoch 指標 CSV
+    metrics_df = pd.DataFrame({
+        "Epoch": epoch_list,
+        "Train Loss": train_loss_list,
+        "Train Accuracy": train_acc_list,
+        "Train Precision": train_precision_list,
+        "Train Recall": train_recall_list,
+        "Train F1-score": train_f1_list
+    })
+    metrics_csv_path = os.path.join(save_dir, "final_train_metrics.csv")
+    metrics_df.to_csv(metrics_csv_path, index=False)
+
+    # 6) 畫 final 指標曲線（對齊你 fold 的風格：pdf + svg）
+    plt.figure(figsize=(10, 6))
+    plt.plot(epoch_list, train_loss_list, label="Train Loss")
+    plt.title("FINAL - Train Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, "final_train_loss.pdf"), bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, "final_train_loss.svg"), bbox_inches='tight')
+    plt.close()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(epoch_list, train_acc_list, label="Train Accuracy")
+    plt.title("FINAL - Train Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, "final_train_accuracy.pdf"), bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, "final_train_accuracy.svg"), bbox_inches='tight')
+    plt.close()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(epoch_list, train_f1_list, label="Train F1-score")
+    plt.title("FINAL - Train F1-score")
+    plt.xlabel("Epoch")
+    plt.ylabel("F1-score")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, "final_train_f1.pdf"), bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, "final_train_f1.svg"), bbox_inches='tight')
+    plt.close()
+
+    # 7) 全資料混淆矩陣（部署前 sanity check 很重要）
+    final_acc, final_p, final_r, final_f1, cm = evaluate_with_prf(model, eval_loader, device, num_classes=NUM_CLASSES)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=list(range(NUM_CLASSES)))
+    plt.figure(figsize=(4, 4))
+    disp.plot(values_format='d', cmap='Blues')
+    plt.title("FINAL - Confusion Matrix (All Data)")
+    plt.savefig(os.path.join(save_dir, "final_cm.pdf"), bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, "final_cm.svg"), bbox_inches='tight')
+    plt.close()
+
+    # 8) Save model / scaler / config
+    model_path = os.path.join(save_dir, "final_model.pth")
+    torch.save(model.state_dict(), model_path)
+
+    scaler_path = os.path.join(save_dir, "final_scaler.pkl")
+    joblib.dump(scaler, scaler_path)
+
+    config_path = os.path.join(save_dir, "final_config.json")
+    with open(config_path, "w", encoding="utf-8") as f:
+        import json
+        json.dump({
+            "BATCH_SIZE": BATCH_SIZE,
+            "LEARNING_RATE": LEARNING_RATE,
+            "MAX_SEQ_LEN": MAX_SEQ_LEN,
+            "STRIDE": STRIDE,
+            "HIDDEN_DIM": HIDDEN_DIM,
+            "NUM_LAYERS": NUM_LAYERS,
+            "DROPOUT_RATE": DROPOUT_RATE,
+            "NUM_EPOCHS": NUM_EPOCHS,
+        }, f, ensure_ascii=False, indent=2)
+
+    print(f"[FINAL] Saved model : {model_path}")
+    print(f"[FINAL] Saved scaler: {scaler_path}")
+    print(f"[FINAL] Saved config: {config_path}")
+    print(f"[FINAL] Saved metrics: {metrics_csv_path}")
+    print(f"[FINAL] FINAL Acc={final_acc:.4f} P={final_p:.4f} R={final_r:.4f} F1={final_f1:.4f}")
+
+    # 9) 把 FINAL_ALL 的總結追加到「本實驗的 final_metrics.csv」
+    if parent_result_dir is not None:
+        fold_metrics_path = os.path.join(parent_result_dir, "final_metrics.csv")
+        if os.path.exists(fold_metrics_path):
+            df_fold = pd.read_csv(fold_metrics_path)
+
+            # 用同樣欄位，新增一列 FINAL_ALL（Pre-train 欄位沒意義就留空或填 NaN）
+            final_row = {
+                "Fold": "FINAL_ALL",
+                "Pre-train Loss": np.nan,
+                "Pre-train Accuracy": np.nan,
+                "Post-train Loss": np.nan,
+                "Post-train Accuracy": final_acc,
+                "Precision": final_p,
+                "Recall": final_r,
+                "F1-Score": final_f1
+            }
+            df_fold = pd.concat([df_fold, pd.DataFrame([final_row])], ignore_index=True)
+            df_fold.to_csv(fold_metrics_path, index=False)
+            print(f"[FINAL] Appended FINAL_ALL row to: {fold_metrics_path}")
 
 def plot_metric_curves(all_folds_metrics):
     for fold_df in all_folds_metrics:
@@ -481,13 +687,13 @@ if __name__ == "__main__":
             print(f"Label {label} ({folder}): {count} chunks")
     else:
         # 超參數
-        hidden_dim_values = [16, 32, 64]
-        num_layers_values = [1, 2, 3]
-        batch_size_values = [16]
-        learning_rate_values = [0.01]
-        max_seq_len_values = [15]
-        stride_values = [5]
-        dropout_values = [0.0, 0.2, 0.5]
+        hidden_dim_values = [64]
+        num_layers_values = [2]
+        batch_size_values = [8]
+        learning_rate_values = [0.0005]
+        max_seq_len_values = [45]
+        stride_values = [1]
+        dropout_values = [0.3]
 
         # 儲存所有實驗結果記錄
         overall_experiment_logs = []
@@ -526,10 +732,11 @@ if __name__ == "__main__":
                                     RESULT_DIR = exp_result_dir
 
                                     try:
+                                        set_global_seed(SEED)  # 想固定 final 結果可用同一個 seed
                                         # 載入資料（會根據 MAX_SEQ_LEN / STRIDE 切分資料）
                                         all_sequences, all_labels = load_data()
 
-                                        # 執行 K-fold 訓練
+                                        # 先跑 K-fold
                                         final_metrics_df, all_folds_metrics = kfold_training(all_sequences, all_labels)
 
                                         # 繪製指標曲線圖
@@ -540,6 +747,10 @@ if __name__ == "__main__":
                                         log_csv_path = os.path.join(RESULT_DIR, "final_metrics.csv")
                                         final_metrics_df.to_csv(log_csv_path, index=False)
                                         print(f"Final metrics logged at: {log_csv_path}")
+                                        
+                                        # 再跑 final（部署用）— 存到同一組參數資料夾底下的 final_train/
+                                        final_dir = os.path.join(RESULT_DIR, "final_train")                                        
+                                        train_final_model(all_sequences, all_labels, save_dir=final_dir, parent_result_dir=RESULT_DIR)
 
                                         # 將本次實驗資訊存入 overall_experiment_logs
                                         overall_experiment_logs.append({
