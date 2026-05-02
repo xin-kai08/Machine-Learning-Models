@@ -5,6 +5,7 @@ import optuna
 import time
 import math
 import torch.fft
+import gc
 import torch.nn as nn
 import numpy as np
 import pandas as pd
@@ -18,7 +19,7 @@ from sklearn.metrics import log_loss
 
 # --- 1. 設定與路徑 ---
 BASE_PATH = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\dataset\feature dim_4\hardware"
-RESULT_DIR = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\result\20260411"
+RESULT_DIR = r"C:\Users\boss9\OneDrive\文件\專題\機器學習\result\20260420"
 os.makedirs(RESULT_DIR, exist_ok=True)
 
 # 定義標籤路徑
@@ -202,24 +203,24 @@ class TimesNetClassifier(nn.Module):
         return self.fc(x)
     
 def get_model_params(trial):
-    model_type = trial.suggest_categorical("model_type", ["LSTM"])          #["LSTM", "GRU", "CNN1D", "MLP", "Transformer", "TimesNet", "SVM"]
+    model_type = trial.suggest_categorical("model_type", ["GRU"])          #["LSTM", "GRU", "CNN1D", "MLP", "Transformer", "TimesNet", "SVM"]
     
     params = {}
     if model_type == "LSTM":
-        params["seq_len"] = trial.suggest_categorical("lstm_seq_len", [5, 10])
-        params["batch_size"] = trial.suggest_categorical("lstm_batch_size", [64, 128])
-        params["lr"] = trial.suggest_float("lstm_lr", 1e-2, 1e-1, log=True)
-        params["hidden_dim"] = trial.suggest_categorical("lstm_hidden", [64, 128])
+        params["seq_len"] = trial.suggest_categorical("lstm_seq_len", [7])
+        params["batch_size"] = trial.suggest_categorical("lstm_batch_size", [128])
+        params["lr"] = trial.suggest_float("lstm_lr", 5e-2, log=True)
+        params["hidden_dim"] = trial.suggest_categorical("lstm_hidden", [64])
         params["num_layers"] = trial.suggest_categorical("lstm_layers", [3])
-        params["dropout"] = trial.suggest_categorical("lstm_dropout", [0, 0.3, 0.5])
+        params["dropout"] = trial.suggest_categorical("lstm_dropout", [0.5])
 
     elif model_type == "GRU":
-        params["seq_len"] = trial.suggest_categorical("gru_seq_len", [10, 20])
+        params["seq_len"] = trial.suggest_categorical("gru_seq_len", [15, 20, 25])
         params["batch_size"] = trial.suggest_categorical("gru_batch_size", [64, 128])
-        params["lr"] = trial.suggest_categorical("gru_lr", [1e-1, 1e-2])
-        params["hidden_dim"] = trial.suggest_categorical("gru_hidden", [16])
-        params["num_layers"] = trial.suggest_categorical("gru_layers", [1])
-        params["dropout"] = trial.suggest_categorical("gru_dropout", [0.3])
+        params["lr"] = trial.suggest_float("gru_lr", 5e-3, 5e-2, log=True)
+        params["hidden_dim"] = trial.suggest_categorical("gru_hidden", [32, 64])
+        params["num_layers"] = trial.suggest_categorical("gru_layers", [1, 2])
+        params["dropout"] = trial.suggest_categorical("gru_dropout", [0.4, 0.5])
 
     elif model_type == "CNN1D":
         params["seq_len"] = trial.suggest_categorical("cnn_seq_len", [10, 20])
@@ -421,6 +422,11 @@ def objective(trial, all_segments, all_labels):
     # 寫入 CSV
     df = pd.DataFrame([log_entry])
     df.to_csv(LOG_CSV, mode='a', index=False, header=not os.path.exists(LOG_CSV))
+    
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
 
     return avg_loss, avg_f1
 
